@@ -1,0 +1,841 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Color Match</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#121212">
+<meta name="description" content="See a color, then dial it back in from memory. Five colors, ten points each, no ads.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Color Match">
+<style>
+  :root{
+    /* Neutral greys on purpose: the only hue on screen should be the one you're matching. */
+    --ground:#121212;
+    --panel:#1b1b1b;
+    --panel-2:#272727;
+    --line:rgba(255,255,255,.09);
+    --ink:#f3f3f3;
+    --ink-dim:#a6a6a6;
+    --ink-faint:#707070;
+    --font:ui-rounded,"SF Pro Rounded","Nunito","Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+    --wheel:conic-gradient(hsl(0 88% 58%),hsl(45 92% 56%),hsl(90 70% 50%),hsl(150 70% 45%),hsl(195 85% 50%),hsl(240 80% 64%),hsl(290 72% 60%),hsl(330 85% 60%),hsl(360 88% 58%));
+    --thumb:48px;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html,body{margin:0;min-height:100%}
+  body{
+    background:var(--ground);color:var(--ink);font-family:var(--font);
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    -webkit-tap-highlight-color:transparent;touch-action:manipulation;overscroll-behavior:none;
+  }
+  body.playing{overflow:hidden}
+  button{font-family:inherit;font-size:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+  button:focus-visible,.slider:focus-visible{outline:3px solid var(--ring,#fff);outline-offset:3px}
+  p{margin:0}
+  h1,h2{margin:0}
+
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}
+  .sub{font-size:15px;line-height:1.4;color:var(--ink-dim)}
+  .center{text-align:center}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .num{font-variant-numeric:tabular-nums}
+
+  .btn{display:flex;align-items:center;justify-content:center;width:100%;height:54px;border-radius:999px;
+    background:var(--ink);color:var(--ground);font-weight:700;font-size:17px;letter-spacing:-.01em;
+    transition:transform .12s ease,opacity .12s ease}
+  .btn:active{transform:scale(.97)}
+  .btn.ghost{background:var(--panel-2);color:var(--ink)}
+  .link{color:var(--ink-dim);font-size:15px;text-decoration:underline;text-underline-offset:3px;padding:8px;align-self:center}
+
+  /* ---------- pages (home, results) ---------- */
+  .page{max-width:480px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;gap:14px;
+    padding:max(24px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));animation:rise .28s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  .brand{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:8px 2px 6px}
+  .mark{position:relative;width:60px;height:60px}
+  .mark .ring{position:absolute;inset:0;border-radius:50%;background:var(--wheel);
+    -webkit-mask:radial-gradient(circle,transparent 52%,#000 53.5%);mask:radial-gradient(circle,transparent 52%,#000 53.5%);
+    animation:spin 14s linear infinite}
+  .mark .knob{position:absolute;width:20px;height:20px;border-radius:50%;background:#fff;border:4px solid var(--ground);
+    left:50%;top:50%;transform:translate(-50%,-50%) rotate(-40deg) translateY(-23px)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .brand h1{font-size:clamp(42px,13vw,58px);font-weight:800;letter-spacing:-.045em;line-height:.95}
+  .brand .tag{font-size:17px;color:var(--ink-dim)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:16px;display:flex;flex-direction:column;gap:12px}
+  .card h2{font-size:22px;font-weight:800;letter-spacing:-.02em}
+  .card .x{width:32px;height:32px;border-radius:50%;background:var(--panel-2);color:var(--ink-dim);font-size:18px;line-height:1}
+  .chips{display:flex;gap:8px}
+  .chips i{flex:1;height:34px;border-radius:10px;background:var(--panel-2);display:grid;place-items:center;
+    font-style:normal;font-weight:700;color:var(--ink-faint);font-size:15px}
+
+  .seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:4px;margin-top:8px}
+  .seg button{height:42px;border-radius:12px;color:var(--ink-dim);font-weight:600;font-size:15px}
+  .seg button[aria-pressed="true"]{background:var(--panel-2);color:var(--ink)}
+
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 6px;text-align:center;display:flex;flex-direction:column;gap:4px}
+  .stat b{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .stat span{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}
+
+  /* ---------- play screens: the colour fills the whole screen ---------- */
+  .play{position:fixed;inset:0;display:flex;flex-direction:column;
+    --fg:#fff;--fg-soft:rgba(255,255,255,.2);--ring:#fff;color:var(--fg);
+    padding:max(10px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));
+    -webkit-user-select:none;user-select:none}
+  .light{--fg:#111;--fg-soft:rgba(0,0,0,.14);--ring:#111;color:var(--fg)}
+  .topbar{display:flex;align-items:center;justify-content:space-between;height:48px;flex:none}
+  .topbar .spacer{width:44px}
+  .iconbtn{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--fg-soft);color:var(--fg)}
+  .iconbtn svg{width:18px;height:18px}
+  .dots{display:flex;gap:8px}
+  .dots i{width:10px;height:10px;border-radius:50%;background:var(--fg-soft)}
+  .dots i.done{background:var(--fg)}
+  .dots i.now{background:transparent;box-shadow:inset 0 0 0 2px var(--fg)}
+  .play .eyebrow{color:var(--fg);opacity:.75}
+  .btn.fg{background:var(--fg);color:var(--bg,#121212)}
+  .btn.soft{background:var(--fg-soft);color:var(--fg)}
+
+  .mem-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+  .count{font-size:clamp(110px,36vw,170px);font-weight:800;line-height:1;letter-spacing:-.05em;font-variant-numeric:tabular-nums}
+  .timebar{position:absolute;left:0;right:0;bottom:0;height:6px;background:var(--fg-soft)}
+  .timebar i{display:block;height:100%;background:var(--fg);transform-origin:left;width:100%}
+  #skip{max-width:520px;align-self:center;margin-bottom:6px}
+
+  .hint{text-align:center;font-size:17px;font-weight:600;margin-top:10px;transition:opacity .4s ease}
+  .controls{margin-top:auto;width:100%;max-width:520px;align-self:center;display:flex;flex-direction:column;gap:14px}
+  .slabel{display:block;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;opacity:.8;margin:0 0 6px 6px}
+  .slider{position:relative;height:var(--thumb);border-radius:999px;touch-action:none;cursor:pointer;
+    box-shadow:0 0 0 2px var(--fg-soft),0 2px 10px rgba(0,0,0,.18)}
+  .slider .thumb{position:absolute;top:0;left:calc(var(--t,0) * (100% - var(--thumb)));width:var(--thumb);height:var(--thumb);
+    border-radius:50%;background:var(--c);border:4px solid #fff;pointer-events:none;
+    box-shadow:0 2px 10px rgba(0,0,0,.35),inset 0 0 0 1px rgba(0,0,0,.12);transition:transform .1s ease}
+  .slider.drag .thumb{transform:scale(1.14)}
+  #submit{margin-top:6px}
+
+  .reveal{padding:0;display:grid;grid-template-rows:1fr 1fr}
+  .half{display:flex;flex-direction:column;gap:10px;--fg:#fff;--fg-soft:rgba(255,255,255,.2);color:var(--fg);padding:0 16px}
+  .half.light{--fg:#111;--fg-soft:rgba(0,0,0,.14)}
+  .half.top{padding-top:max(10px,env(safe-area-inset-top))}
+  .half.bottom{justify-content:flex-end;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+  .half .inner{width:100%;max-width:520px;align-self:center;display:flex;flex-direction:column;gap:12px}
+  .tag2{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:0 4px}
+  .tag2 .eyebrow{font-size:12px}
+  .hsb{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;opacity:.85}
+  .scorecard{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--ground);color:var(--ink);
+    border-radius:26px;padding:16px 30px 16px;text-align:center;min-width:200px;box-shadow:0 14px 50px rgba(0,0,0,.35)}
+  .scorecard .big{font-size:68px;font-weight:800;line-height:1;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+  .scorecard .of{font-size:15px;color:var(--ink-faint);font-weight:600}
+  .scorecard .verdict{font-size:17px;font-weight:700;margin-top:6px}
+  .scorecard.pop{animation:pop .35s cubic-bezier(.2,1.4,.4,1) both}
+  @keyframes pop{from{transform:translate(-50%,-50%) scale(.7);opacity:0}}
+
+  /* ---------- results ---------- */
+  .total{display:flex;align-items:baseline;gap:8px;margin-top:6px}
+  .total b{font-size:clamp(76px,25vw,110px);font-weight:800;letter-spacing:-.05em;line-height:.9;font-variant-numeric:tabular-nums}
+  .total span{font-size:22px;color:var(--ink-faint);font-weight:700}
+  .verdict-big{font-size:22px;font-weight:800;letter-spacing:-.02em}
+  .pairs{list-style:none;margin:6px 0;padding:0;display:flex;flex-direction:column;gap:8px}
+  .pair{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:8px 14px 8px 8px}
+  .duo{flex:1;display:grid;grid-template-columns:1fr 1fr;height:48px;border-radius:12px;overflow:hidden}
+  .pair .ps{width:44px;text-align:right;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+  .pairs-key{display:flex;gap:12px;padding:0 66px 0 8px}
+  .pairs-key span{flex:1}
+
+  dialog{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:24px;padding:22px;
+    width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 48px)}
+  dialog::backdrop{background:rgba(0,0,0,.6)}
+  dialog h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:12px}
+  dialog ol{padding-left:20px;margin:0 0 12px;display:flex;flex-direction:column;gap:10px;line-height:1.4;color:var(--ink-dim)}
+  dialog ol b{color:var(--ink)}
+  dialog p{line-height:1.4;color:var(--ink-dim);margin-bottom:18px}
+
+  #toast{position:fixed;left:50%;bottom:max(24px,env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;
+    background:var(--ink);color:var(--ground);font-weight:700;padding:12px 18px;border-radius:999px;pointer-events:none;
+    transition:opacity .2s ease,transform .2s ease;z-index:10}
+  #toast.on{opacity:1;transform:translate(-50%,0)}
+
+  @media (prefers-reduced-motion:reduce){
+    .mark .ring{animation:none}
+    .page,.scorecard.pop{animation:none}
+  }
+</style>
+</head>
+<body>
+
+<section id="home" class="screen page">
+  <header class="brand">
+    <div class="mark" aria-hidden="true"><i class="ring"></i><i class="knob"></i></div>
+    <h1>Color Match</h1>
+    <p class="tag">See a color. Dial it back in from memory.</p>
+  </header>
+
+  <div id="challenge" class="card" hidden>
+    <div class="row"><span class="eyebrow">Challenge</span><button class="x" id="dropChallenge" aria-label="Dismiss challenge">&times;</button></div>
+    <p class="sub" id="challengeText"></p>
+    <button class="btn" id="playChallenge">Take the challenge</button>
+  </div>
+
+  <div class="card">
+    <div class="row"><h2 id="dailyNum">Daily</h2><span class="eyebrow" id="dailyDate"></span></div>
+    <div class="chips" id="dailyChips"></div>
+    <p class="sub" id="dailySub"></p>
+    <button class="btn" id="playDaily">Play today&rsquo;s colors</button>
+  </div>
+
+  <div class="card">
+    <div class="row"><h2>Practice</h2><span class="eyebrow" id="practiceBest"></span></div>
+    <p class="sub">Five fresh colors every game. Play as many as you like.</p>
+    <button class="btn ghost" id="playPractice">New game</button>
+  </div>
+
+  <div>
+    <span class="eyebrow">Time to memorize</span>
+    <div class="seg" role="group" aria-label="Difficulty">
+      <button data-diff="easy" aria-pressed="false">Easy &middot; 5s</button>
+      <button data-diff="hard" aria-pressed="false">Hard &middot; 2s</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b id="stStreak">0</b><span>Streak</span></div>
+    <div class="stat"><b id="stBest">&ndash;</b><span>Best daily</span></div>
+    <div class="stat"><b id="stAvg">&ndash;</b><span>Avg daily</span></div>
+  </div>
+
+  <button class="link" id="openHowto">How to play</button>
+</section>
+
+<section id="memorize" class="screen play" hidden>
+  <div class="topbar"><button class="iconbtn quit" aria-label="Quit to home"></button><div class="dots"></div><span class="spacer"></span></div>
+  <div class="mem-center">
+    <span class="eyebrow">Memorize</span>
+    <div class="count" id="count" aria-live="off">5</div>
+  </div>
+  <button class="btn soft" id="skip">Got it</button>
+  <div class="timebar"><i id="timebar"></i></div>
+</section>
+
+<section id="pick" class="screen play" hidden>
+  <div class="topbar"><button class="iconbtn quit" aria-label="Quit to home"></button><div class="dots"></div><span class="spacer"></span></div>
+  <p class="hint" id="pickHint">Dial it back in</p>
+  <div class="controls">
+    <div><span class="slabel" id="lh">Hue</span>
+      <div class="slider" data-k="h" data-max="360" role="slider" tabindex="0" aria-labelledby="lh" aria-valuemin="0" aria-valuemax="360"><i class="thumb"></i></div></div>
+    <div><span class="slabel" id="ls">Saturation</span>
+      <div class="slider" data-k="s" data-max="100" role="slider" tabindex="0" aria-labelledby="ls" aria-valuemin="0" aria-valuemax="100"><i class="thumb"></i></div></div>
+    <div><span class="slabel" id="lv">Brightness</span>
+      <div class="slider" data-k="v" data-max="100" role="slider" tabindex="0" aria-labelledby="lv" aria-valuemin="0" aria-valuemax="100"><i class="thumb"></i></div></div>
+    <button class="btn fg" id="submit">Lock it in</button>
+  </div>
+</section>
+
+<section id="reveal" class="screen play reveal" hidden>
+  <div class="half top" id="rvT">
+    <div class="topbar"><button class="iconbtn quit" aria-label="Quit to home"></button><div class="dots"></div><span class="spacer"></span></div>
+    <div class="inner"><div class="tag2"><span class="eyebrow">Original</span><span class="hsb" id="rvTv"></span></div></div>
+  </div>
+  <div class="half bottom" id="rvG">
+    <div class="inner">
+      <div class="tag2"><span class="eyebrow">Yours</span><span class="hsb" id="rvGv"></span></div>
+      <button class="btn fg" id="next">Next color</button>
+    </div>
+  </div>
+  <div class="scorecard" id="rvCard" role="status">
+    <div class="big" id="rvScore">0.0</div>
+    <div class="of">out of 10</div>
+    <div class="verdict" id="rvVerdict"></div>
+  </div>
+</section>
+
+<section id="results" class="screen page" hidden>
+  <span class="eyebrow" id="resTitle"></span>
+  <div class="total"><b id="resTotal">0.0</b><span>/ 50</span></div>
+  <p class="verdict-big" id="resVerdict"></p>
+  <p class="sub" id="resVs" hidden></p>
+  <div class="pairs-key eyebrow"><span>Original</span><span>Yours</span></div>
+  <ol class="pairs" id="pairs"></ol>
+  <button class="btn" id="share">Share</button>
+  <button class="btn ghost" id="again">Play again</button>
+  <button class="btn ghost" id="goHome">Home</button>
+  <p class="sub center" id="resNext"></p>
+</section>
+
+<dialog id="howto">
+  <h2>How to play</h2>
+  <ol>
+    <li><b>Memorize.</b> A color fills the screen for 5 seconds (2 on Hard).</li>
+    <li><b>Recreate.</b> Rebuild it from memory with the hue, saturation and brightness sliders.</li>
+    <li><b>Score.</b> Lock it in to see how close you got, out of 10. Closeness is measured the way eyes see it (CIEDE2000), not by raw numbers.</li>
+  </ol>
+  <p>Five colors per game, 50 points max. The daily has the same five colors for everyone. Practice deals new ones every time, and you can send a friend your exact colors from the results screen.</p>
+  <form method="dialog"><button class="btn">Got it</button></form>
+</dialog>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+
+const ROUNDS = 5;
+const EPOCH = Date.UTC(2026, 9, 11);          // Daily #1
+const MEMO_SECONDS = { easy: 5, hard: 2 };
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+
+/* ================= colour maths ================= */
+
+// h 0-360, s/v 0-1 -> [r,g,b] 0-255
+function hsv2rgb(h, s, v) {
+  const f = n => { const k = (n + h / 60) % 6; return (v - v * s * Math.max(0, Math.min(k, 4 - k, 1))) * 255; };
+  return [f(5), f(3), f(1)];
+}
+const rgbOf = c => hsv2rgb(c.h, c.s / 100, c.v / 100);
+const cssRgb = ([r, g, b]) => `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
+const cssOf = c => cssRgb(rgbOf(c));
+const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+
+function rgb2lab([r, g, b]) {
+  const R = lin(r), G = lin(g), B = lin(b);
+  const X = (0.4124564 * R + 0.3575761 * G + 0.1804375 * B) / 0.95047;
+  const Y = 0.2126729 * R + 0.7151522 * G + 0.0721750 * B;
+  const Z = (0.0193339 * R + 0.1191920 * G + 0.9503041 * B) / 1.08883;
+  const f = t => t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116;
+  const fx = f(X), fy = f(Y), fz = f(Z);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+
+// CIEDE2000 colour difference
+function dE00([L1, a1, b1], [L2, a2, b2]) {
+  const rad = Math.PI / 180, deg = 180 / Math.PI, p7 = 25 ** 7;
+  const Cb = (Math.hypot(a1, b1) + Math.hypot(a2, b2)) / 2;
+  const G = 0.5 * (1 - Math.sqrt(Cb ** 7 / (Cb ** 7 + p7)));
+  const a1p = (1 + G) * a1, a2p = (1 + G) * a2;
+  const C1p = Math.hypot(a1p, b1), C2p = Math.hypot(a2p, b2);
+  const hue = (b, a) => (b === 0 && a === 0) ? 0 : (Math.atan2(b, a) * deg + 360) % 360;
+  const h1p = hue(b1, a1p), h2p = hue(b2, a2p);
+  const dLp = L2 - L1, dCp = C2p - C1p;
+  let dhp = 0;
+  if (C1p * C2p !== 0) { dhp = h2p - h1p; if (dhp > 180) dhp -= 360; else if (dhp < -180) dhp += 360; }
+  const dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin(dhp * rad / 2);
+  const Lbp = (L1 + L2) / 2, Cbp = (C1p + C2p) / 2;
+  let hbp = h1p + h2p;
+  if (C1p * C2p !== 0) { if (Math.abs(h1p - h2p) > 180) hbp += hbp < 360 ? 360 : -360; hbp /= 2; }
+  const T = 1 - 0.17 * Math.cos((hbp - 30) * rad) + 0.24 * Math.cos(2 * hbp * rad)
+          + 0.32 * Math.cos((3 * hbp + 6) * rad) - 0.20 * Math.cos((4 * hbp - 63) * rad);
+  const dTheta = 30 * Math.exp(-(((hbp - 275) / 25) ** 2));
+  const Rc = 2 * Math.sqrt(Cbp ** 7 / (Cbp ** 7 + p7));
+  const Sl = 1 + 0.015 * (Lbp - 50) ** 2 / Math.sqrt(20 + (Lbp - 50) ** 2);
+  const Sc = 1 + 0.045 * Cbp, Sh = 1 + 0.015 * Cbp * T;
+  const Rt = -Math.sin(2 * dTheta * rad) * Rc;
+  return Math.sqrt((dLp / Sl) ** 2 + (dCp / Sc) ** 2 + (dHp / Sh) ** 2 + Rt * (dCp / Sc) * (dHp / Sh));
+}
+
+// 0-10, one decimal. ~dE 5 -> 8.8, 10 -> 7.2, 20 -> 4.2, 40 -> 1.0
+function scoreFor(t, g) {
+  const d = dE00(rgb2lab(rgbOf(t)), rgb2lab(rgbOf(g)));
+  return Math.round(100 * Math.exp(-((d / 22) ** 1.4))) / 10;
+}
+
+// Black text on light colours, white on dark: whichever has the higher contrast.
+function isLight(rgb) {
+  const L = 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+  return (L + 0.05) / 0.05 > 1.05 / (L + 0.05);
+}
+function paint(el, c) {
+  const rgb = rgbOf(c);
+  el.style.background = cssRgb(rgb);
+  el.style.setProperty('--bg', cssRgb(rgb));
+  el.classList.toggle('light', isLight(rgb));
+}
+const metaTheme = $('meta[name="theme-color"]');
+const setTheme = c => { metaTheme.content = c; };
+
+/* ================= seeded colours ================= */
+
+function seedHash(str) {
+  let h = 1779033703 ^ str.length;
+  for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; }
+  h = Math.imul(h ^ h >>> 16, 2246822507); h = Math.imul(h ^ h >>> 13, 3266489909);
+  return (h ^ h >>> 16) >>> 0;
+}
+function rng(seed) {
+  let a = seedHash(seed);
+  return () => {
+    a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+// Five colours with hues spread round the wheel, mostly vivid, occasionally muted or deep.
+function makeColors(seed) {
+  const r = rng(seed);
+  const base = r() * 360;
+  const hues = Array.from({ length: ROUNDS }, (_, i) => (base + i * 360 / ROUNDS + (r() - 0.5) * 40 + 360) % 360);
+  for (let i = hues.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [hues[i], hues[j]] = [hues[j], hues[i]]; }
+  return hues.map(h => ({
+    h: Math.round(h) % 360,
+    s: Math.round(100 * (0.18 + 0.82 * Math.sqrt(r()))),
+    v: Math.round(100 * (0.28 + 0.72 * Math.sqrt(r()))),
+  }));
+}
+const newSeed = () => Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+
+/* ================= storage ================= */
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('cm:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('cm:' + k, JSON.stringify(v)); } catch { /* private mode: play on without saving */ } },
+};
+const getDiff = () => store.get('diff', 'easy') === 'hard' ? 'hard' : 'easy';
+const dailies = () => store.get('daily', {});
+function saveDaily(key, entry) { const all = dailies(); all[key] = entry; store.set('daily', all); }
+
+const pad = n => String(n).padStart(2, '0');
+const keyOf = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const todayKey = () => keyOf(new Date());
+function dailyNum(key) { const [y, m, d] = key.split('-').map(Number); return Math.round((Date.UTC(y, m - 1, d) - EPOCH) / 864e5) + 1; }
+const totalOf = rounds => Math.round(rounds.reduce((a, r) => a + r.score, 0) * 10) / 10;
+function untilTomorrow() {
+  const n = new Date(), t = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1);
+  const s = Math.max(0, Math.floor((t - n) / 1000));
+  return `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
+}
+function streak() {
+  const all = dailies(), d = new Date();
+  if (!all[keyOf(d)]?.done) d.setDate(d.getDate() - 1);
+  let n = 0;
+  while (all[keyOf(d)]?.done) { n++; d.setDate(d.getDate() - 1); }
+  return n;
+}
+
+/* ================= words ================= */
+
+function roundVerdict(s) {
+  if (s >= 9.8) return 'Spot on';
+  if (s >= 9) return 'Dialed in';
+  if (s >= 8) return 'So close';
+  if (s >= 6.5) return 'Nice eye';
+  if (s >= 4.5) return 'Not bad';
+  if (s >= 2.5) return 'In the neighborhood';
+  return 'Way off';
+}
+function gameVerdict(t) {
+  if (t >= 46) return 'Perfect pitch for color';
+  if (t >= 41) return 'Sharp eye';
+  if (t >= 34) return 'Solid memory';
+  if (t >= 26) return 'Getting there';
+  return 'Colors are hard';
+}
+const hsbText = c => `H ${Math.round(c.h)}°  S ${Math.round(c.s)}%  B ${Math.round(c.v)}%`;
+const fmt = n => n.toFixed(1);
+
+/* ================= screens ================= */
+
+let screen = 'home';
+function show(id) {
+  screen = id;
+  $$('.screen').forEach(s => { s.hidden = s.id !== id; });
+  // A button on the screen we just left would otherwise keep focus and swallow Enter.
+  if (document.activeElement?.closest('.screen[hidden]')) document.activeElement.blur();
+  document.body.classList.toggle('playing', ['memorize', 'pick', 'reveal'].includes(id));
+  if (id === 'home' || id === 'results') { setTheme('#121212'); window.scrollTo(0, 0); }
+}
+
+const quitIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+$$('.quit').forEach(b => { b.innerHTML = quitIcon; b.addEventListener('click', quit); });
+
+let toastTimer;
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), 1800);
+}
+const buzz = ms => { try { navigator.vibrate?.(ms); } catch { /* unsupported */ } };
+
+/* ---------- home ---------- */
+
+let challenge = null;
+(() => {
+  const q = new URLSearchParams(location.search);
+  const c = (q.get('c') || '').toLowerCase();
+  if (!/^[a-z0-9]{4,16}$/.test(c)) return;
+  const s = parseFloat(q.get('s'));
+  challenge = { seed: c, diff: q.get('d') === 'hard' ? 'hard' : 'easy', score: isFinite(s) ? Math.min(50, Math.max(0, s)) : null };
+})();
+function dropChallenge() {
+  challenge = null;
+  history.replaceState(null, '', location.pathname);
+  renderHome();
+}
+
+let homeKey = '';
+function renderHome() {
+  const key = todayKey(), num = dailyNum(key), entry = dailies()[key];
+  homeKey = key;
+  $('#dailyNum').textContent = `Daily #${num}`;
+  $('#dailyDate').textContent = new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+  const chips = $('#dailyChips'); chips.innerHTML = '';
+  for (let i = 0; i < ROUNDS; i++) {
+    const chip = document.createElement('i');
+    const r = entry?.rounds[i];
+    if (r) chip.style.background = cssOf(r.t); else chip.textContent = '?';
+    chips.append(chip);
+  }
+  const btn = $('#playDaily'), sub = $('#dailySub');
+  btn.classList.toggle('ghost', !!entry?.done);
+  if (entry?.done) {
+    sub.innerHTML = `You scored <b style="color:var(--ink)">${fmt(totalOf(entry.rounds))}</b>${entry.diff === 'hard' ? ' on Hard' : ''}. Next daily in <span class="num" data-countdown></span>.`;
+    btn.textContent = 'See results';
+  } else if (entry?.rounds.length) {
+    sub.textContent = `${entry.rounds.length} of ${ROUNDS} done${entry.diff === 'hard' ? ' on Hard' : ''}. Pick up where you left off.`;
+    btn.textContent = 'Resume';
+  } else {
+    sub.textContent = 'Five colors, the same for everyone today.';
+    btn.textContent = 'Play today’s colors';
+  }
+
+  const pr = store.get('practice', { played: 0, best: null });
+  $('#practiceBest').textContent = pr.best != null ? `Best ${fmt(pr.best)}` : '';
+
+  const diff = getDiff();
+  $$('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.diff === diff)));
+
+  const done = Object.values(dailies()).filter(e => e.done).map(e => totalOf(e.rounds));
+  $('#stStreak').textContent = streak();
+  $('#stBest').textContent = done.length ? fmt(Math.max(...done)) : '–';
+  $('#stAvg').textContent = done.length ? fmt(done.reduce((a, b) => a + b, 0) / done.length) : '–';
+
+  const ch = $('#challenge');
+  ch.hidden = !challenge;
+  if (challenge) {
+    const hard = challenge.diff === 'hard' ? ' on Hard' : '';
+    $('#challengeText').textContent = challenge.score != null
+      ? `A friend scored ${fmt(challenge.score)} / 50 on these five colors${hard}. Can you beat it?`
+      : `A friend sent you their five colors${hard}. See how you do.`;
+  }
+  tickCountdowns();
+}
+
+$$('.seg button').forEach(b => b.addEventListener('click', () => { store.set('diff', b.dataset.diff); renderHome(); }));
+$('#playDaily').addEventListener('click', () => {
+  const e = dailies()[todayKey()];
+  if (e?.done) { game = { mode: 'daily', key: todayKey(), diff: e.diff, rounds: e.rounds, num: e.num }; showResults(); }
+  else startGame('daily');
+});
+$('#playPractice').addEventListener('click', () => startGame('practice'));
+$('#playChallenge').addEventListener('click', () => startGame('challenge'));
+$('#dropChallenge').addEventListener('click', dropChallenge);
+$('#openHowto').addEventListener('click', () => $('#howto').showModal());
+
+function tickCountdowns() { $$('[data-countdown]').forEach(el => { el.textContent = untilTomorrow(); }); }
+setInterval(() => {
+  tickCountdowns();
+  if (screen === 'home' && homeKey !== todayKey()) renderHome();
+}, 1000);
+
+/* ---------- game flow ---------- */
+
+let game = null;
+let raf = 0;
+
+function startGame(mode) {
+  let seed, diff = getDiff(), rounds = [], seen = -1, key = null, num = null, ref = null;
+  if (mode === 'daily') {
+    key = todayKey(); num = dailyNum(key); seed = 'daily:' + key;
+    let e = dailies()[key];
+    if (!e) { e = { num, diff, rounds: [], seen: -1, done: false }; saveDaily(key, e); }
+    diff = e.diff; rounds = e.rounds.slice(); seen = e.seen;
+  } else if (mode === 'challenge') {
+    seed = challenge.seed; diff = challenge.diff; ref = challenge.score;
+  } else {
+    seed = newSeed();
+  }
+  game = { mode, seed, diff, key, num, ref, targets: makeColors(seed), rounds, i: rounds.length, guess: null };
+  if (game.i >= ROUNDS) return showResults();
+  beginRound(seen === game.i);
+}
+
+function beginRound(alreadySeen) {
+  const t = game.targets[game.i];
+  // Start the dials somewhere clearly different from the answer.
+  game.guess = {
+    h: (t.h + 90 + Math.random() * 180) % 360,
+    s: 25 + Math.random() * 55,
+    v: 35 + Math.random() * 50,
+  };
+  if (alreadySeen) showPick(true); else showMemorize();
+}
+
+function renderDots() {
+  $$('.dots').forEach(d => {
+    d.innerHTML = '';
+    for (let i = 0; i < ROUNDS; i++) {
+      const dot = document.createElement('i');
+      if (i < game.rounds.length && !(screen === 'reveal' && i === game.i)) dot.className = 'done';
+      if (i === game.i) dot.className = 'now';
+      d.append(dot);
+    }
+  });
+}
+
+function showMemorize() {
+  const t = game.targets[game.i];
+  if (game.mode === 'daily') { const e = dailies()[game.key]; e.seen = game.i; saveDaily(game.key, e); }
+  const el = $('#memorize');
+  paint(el, t); setTheme(cssOf(t));
+  show('memorize'); renderDots();
+  const dur = MEMO_SECONDS[game.diff] * 1000, start = performance.now();
+  const count = $('#count'), bar = $('#timebar');
+  cancelAnimationFrame(raf);
+  const tick = now => {
+    const left = Math.max(0, dur - (now - start));
+    count.textContent = Math.max(1, Math.ceil(left / 1000));
+    bar.style.transform = `scaleX(${left / dur})`;
+    if (left <= 0) return showPick(false);
+    raf = requestAnimationFrame(tick);
+  };
+  count.textContent = MEMO_SECONDS[game.diff];
+  bar.style.transform = 'scaleX(1)';
+  raf = requestAnimationFrame(tick);
+}
+$('#skip').addEventListener('click', () => { if (screen === 'memorize') showPick(false); });
+
+function showPick(resumed) {
+  cancelAnimationFrame(raf);
+  const hint = $('#pickHint');
+  hint.textContent = resumed ? 'You already saw this one. Dial it in.' : 'Dial it back in';
+  hint.style.opacity = 1;
+  show('pick'); renderDots(); renderPick();
+  setTimeout(() => { if (screen === 'pick') hint.style.opacity = 0; }, 2200);
+}
+
+const sliders = $$('.slider');
+let pickQueued = false;
+function queuePick() { if (!pickQueued) { pickQueued = true; requestAnimationFrame(() => { pickQueued = false; renderPick(); }); } }
+function renderPick() {
+  if (!game?.guess) return;
+  const g = game.guess, color = cssOf(g);
+  paint($('#pick'), g); setTheme(color);
+  // Keep each track readable even when the current colour is grey or near-black.
+  const s = Math.max(g.s, 30) / 100, v = Math.max(g.v, 40) / 100;
+  const tracks = {
+    h: `linear-gradient(to right,${[0, 60, 120, 180, 240, 300, 360].map(h => cssRgb(hsv2rgb(h, s, v))).join(',')})`,
+    s: `linear-gradient(to right,${cssRgb(hsv2rgb(g.h, 0, v))},${cssRgb(hsv2rgb(g.h, 1, v))})`,
+    v: `linear-gradient(to right,#000,${cssRgb(hsv2rgb(g.h, g.s / 100, 1))})`,
+  };
+  const units = { h: '°', s: '%', v: '%' };
+  sliders.forEach(el => {
+    const k = el.dataset.k, max = +el.dataset.max;
+    el.style.background = tracks[k];
+    el.style.setProperty('--t', g[k] / max);
+    el.style.setProperty('--c', color);
+    el.setAttribute('aria-valuenow', Math.round(g[k]));
+    el.setAttribute('aria-valuetext', Math.round(g[k]) + units[k]);
+  });
+}
+
+sliders.forEach(el => {
+  const k = el.dataset.k, max = +el.dataset.max;
+  let active = null, grab = 0;
+  const thumbPx = () => parseFloat(getComputedStyle(el).height);
+  const valueAt = x => {
+    const r = el.getBoundingClientRect(), tw = thumbPx();
+    return Math.min(1, Math.max(0, (x - grab - r.left - tw / 2) / (r.width - tw))) * max;
+  };
+  el.addEventListener('pointerdown', e => {
+    if (!game?.guess || e.button > 0) return;
+    const r = el.getBoundingClientRect(), tw = thumbPx();
+    const cx = r.left + tw / 2 + (game.guess[k] / max) * (r.width - tw);
+    // Grabbing the thumb drags it from where it is; tapping the track jumps there.
+    grab = Math.abs(e.clientX - cx) <= tw * 0.6 ? e.clientX - cx : 0;
+    active = e.pointerId;
+    el.setPointerCapture(e.pointerId);
+    el.classList.add('drag');
+    game.guess[k] = valueAt(e.clientX); queuePick();
+    e.preventDefault();
+  });
+  el.addEventListener('pointermove', e => {
+    if (e.pointerId !== active) return;
+    game.guess[k] = valueAt(e.clientX); queuePick();
+  });
+  const end = e => { if (e.pointerId === active) { active = null; el.classList.remove('drag'); } };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('lostpointercapture', end);
+  el.addEventListener('keydown', e => {
+    if (!game?.guess) return;
+    let v = game.guess[k];
+    const step = e.shiftKey ? 10 : 1;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowUp': v += step; break;
+      case 'ArrowLeft': case 'ArrowDown': v -= step; break;
+      case 'PageUp': v += 10; break;
+      case 'PageDown': v -= 10; break;
+      case 'Home': v = 0; break;
+      case 'End': v = max; break;
+      default: return;
+    }
+    e.preventDefault();
+    game.guess[k] = Math.min(max, Math.max(0, v)); renderPick();
+  });
+});
+
+function submit() {
+  if (screen !== 'pick') return;
+  const t = game.targets[game.i];
+  const g = { h: Math.round(game.guess.h) % 360, s: Math.round(game.guess.s), v: Math.round(game.guess.v) };
+  const score = scoreFor(t, g);
+  game.rounds.push({ t, g, score });
+  game.guess = null;
+  if (game.mode === 'daily') {
+    const e = dailies()[game.key];
+    e.rounds = game.rounds.slice();
+    e.done = e.rounds.length >= ROUNDS;
+    saveDaily(game.key, e);
+  }
+  buzz(score >= 9 ? [20, 40, 20] : 15);
+  showReveal();
+}
+$('#submit').addEventListener('click', submit);
+
+function showReveal() {
+  const r = game.rounds[game.i];
+  paint($('#rvT'), r.t); paint($('#rvG'), r.g);
+  $('#rvTv').textContent = hsbText(r.t);
+  $('#rvGv').textContent = hsbText(r.g);
+  $('#rvVerdict').textContent = roundVerdict(r.score);
+  $('#next').textContent = game.i + 1 >= ROUNDS ? 'See results' : 'Next color';
+  setTheme(cssOf(r.t));
+  show('reveal'); renderDots();
+  const card = $('#rvCard');
+  card.classList.remove('pop'); void card.offsetWidth; card.classList.add('pop');
+  const out = $('#rvScore'), start = performance.now();
+  cancelAnimationFrame(raf);
+  const tick = now => {
+    const p = Math.min(1, (now - start) / 650), e = 1 - (1 - p) ** 3;
+    out.textContent = fmt(r.score * e);
+    if (p < 1) raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+}
+
+function next() {
+  if (screen !== 'reveal') return;
+  cancelAnimationFrame(raf);
+  game.i++;
+  if (game.i >= ROUNDS) showResults(); else beginRound(false);
+}
+$('#next').addEventListener('click', next);
+
+function quit() {
+  if (game && game.mode !== 'daily' && game.rounds.length > 0 && game.rounds.length < ROUNDS
+      && !confirm('Quit this game? Your scores so far will be lost.')) return;
+  cancelAnimationFrame(raf);
+  game = null;
+  renderHome(); show('home');
+}
+
+/* ---------- results ---------- */
+
+function showResults() {
+  const total = totalOf(game.rounds);
+  const hard = game.diff === 'hard';
+  $('#resTitle').textContent = game.mode === 'daily'
+    ? `Daily #${game.num}${hard ? ' · Hard' : ''}`
+    : `${game.mode === 'challenge' ? 'Challenge' : 'Practice'}${hard ? ' · Hard' : ''}`;
+  $('#resTotal').textContent = fmt(total);
+  $('#resVerdict').textContent = gameVerdict(total);
+
+  const vs = $('#resVs');
+  vs.hidden = !(game.mode === 'challenge' && game.ref != null);
+  if (!vs.hidden) {
+    const d = Math.round((total - game.ref) * 10) / 10;
+    vs.textContent = `Your friend scored ${fmt(game.ref)}. ` +
+      (d > 0 ? `You won by ${fmt(d)}.` : d < 0 ? `They won by ${fmt(-d)}.` : 'Dead even.');
+  }
+
+  const list = $('#pairs'); list.innerHTML = '';
+  game.rounds.forEach(r => {
+    const li = document.createElement('li'); li.className = 'pair';
+    li.innerHTML = `<div class="duo"><i style="background:${cssOf(r.t)}"></i><i style="background:${cssOf(r.g)}"></i></div><span class="ps">${fmt(r.score)}</span>`;
+    list.append(li);
+  });
+
+  if (!game.recorded && game.mode !== 'daily' && game.rounds.length >= ROUNDS) {
+    game.recorded = true;
+    const pr = store.get('practice', { played: 0, best: null });
+    pr.played++; pr.best = pr.best == null ? total : Math.max(pr.best, total);
+    store.set('practice', pr);
+    if (game.mode === 'challenge') { challenge = null; history.replaceState(null, '', location.pathname); }
+  }
+
+  $('#again').hidden = game.mode === 'daily';
+  $('#again').textContent = 'New practice game';
+  $('#resNext').innerHTML = game.mode === 'daily' ? 'Next daily in <span class="num" data-countdown></span>' : '';
+  tickCountdowns();
+  show('results');
+}
+
+async function share() {
+  const total = totalOf(game.rounds), hard = game.diff === 'hard';
+  const base = location.origin + location.pathname;
+  const squares = game.rounds.map(r => r.score >= 8 ? '\u{1F7E9}' : r.score >= 5 ? '\u{1F7E8}' : '\u{1F7E5}').join('');
+  let head, url;
+  if (game.mode === 'daily') {
+    head = `Color Match Daily #${game.num}${hard ? ' (Hard)' : ''}`;
+    url = base;
+  } else {
+    head = `Color Match${hard ? ' (Hard)' : ''}: can you beat me on these 5 colors?`;
+    url = `${base}?c=${game.seed}&d=${game.diff}&s=${fmt(total)}`;
+  }
+  const text = `${head}\n${fmt(total)}/50 ${squares}\n${game.rounds.map(r => fmt(r.score)).join(' · ')}`;
+  if (navigator.share) {
+    try { await navigator.share({ text, url }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(`${text}\n${url}`); toast('Copied to clipboard'); }
+  catch { toast('Couldn’t copy'); }
+}
+$('#share').addEventListener('click', share);
+$('#again').addEventListener('click', () => startGame('practice'));
+$('#goHome').addEventListener('click', () => { game = null; renderHome(); show('home'); });
+
+/* ---------- keyboard ---------- */
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  if (e.target.closest('button, dialog')) return;   // let focused buttons handle themselves
+  if (screen === 'memorize') { e.preventDefault(); showPick(false); }
+  else if (screen === 'pick' && e.key === 'Enter') { e.preventDefault(); submit(); }
+  else if (screen === 'reveal') { e.preventDefault(); next(); }
+});
+
+/* ---------- boot ---------- */
+
+renderHome();
+show('home');
+if (!store.get('seenHowto', false)) { store.set('seenHowto', true); $('#howto').showModal(); }
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+// Exposed for tests.
+window.__cm = { scoreFor, dE00, rgb2lab, hsv2rgb, makeColors, get game() { return game; } };
+})();
+</script>
+</body>
+</html>
